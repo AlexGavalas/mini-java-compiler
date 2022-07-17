@@ -1,0 +1,147 @@
+import java_cup.runtime.*;
+import java.io.*;
+
+/**
+ *  Usercode Components
+ */
+
+// Connect this parser to a scanner!
+
+parser code {:
+    Scanner s;
+    Parser(Scanner s) { 
+	this.s = s;
+    }
+:}
+
+/* define how to connect to the scanner! */
+
+scan with {: return s.next_token(); :};
+
+/**
+ *  Symbol Lists
+ */
+
+/* Terminals (tokens returned by the scanner). */
+
+terminal            PLUS, LPAREN, RPAREN, RBRACKET, LBRACKET, IF, ELSE, COMMA, EQUALS, IN;
+terminal String     IDENTIFIER, STRING;
+
+/*  Non terminals */
+
+non terminal program;
+non terminal functionDeclaration;
+non terminal argumentsList;
+non terminal nothing;
+non terminal condition;
+non terminal side;
+non terminal rest;
+non terminal block;
+
+non terminal functionCall;
+non terminal functionCalls;
+non terminal callersList;
+non terminal noArgsFunction;
+non terminal ifCondition;
+
+non terminal callCondition, callSide, callRest, callBlock;
+non terminal declCalls, declCallsArgs;
+
+/* The Grammar Rules */
+
+start with program;
+
+program ::= functionDeclaration:d    {: File output = new File("MyProg.java");
+					PrintStream toFile = new PrintStream(output);
+					System.setOut(toFile);
+					System.out.println("public class MyProg {\n" + d + "\n}"); 
+				     :}
+	  ;
+
+functionCalls ::= functionCall:e2 functionCalls:e         {: RESULT = "\t\tSystem.out.println(" + e2 + ");\n" + e; :}
+		| functionCall:e			  {: RESULT = "\t\tSystem.out.println(" + e + ");"; :}
+		;
+
+functionCall ::= IDENTIFIER:name LPAREN callersList:list RPAREN     {: RESULT = name + "(" + list + ")"; :}
+	       | noArgsFunction:name                                {: RESULT = name; :}
+	       ;
+
+noArgsFunction ::= IDENTIFIER:name LPAREN RPAREN       {: RESULT = name + "()"; :}
+	         ;
+
+callersList ::= STRING:e COMMA callersList:e2          {: RESULT = e2 + "," + e; :}
+	      | functionCall:e COMMA callersList:e2    {: RESULT = e2 + "," + e; :}
+	      | ifCondition:e COMMA callersList:e2     {: RESULT = e2 + ", (" + e + ")"; :}
+	      | STRING:e                               {: RESULT = e; :}
+	      | functionCall:e	                       {: RESULT = e; :}
+	      | ifCondition:e	                       {: RESULT = "(" + e + ")"; :}
+	      | STRING:e PLUS callersList:l	       {: RESULT = e + "+" + l; :}
+	      | functionCall:e PLUS callersList:l      {: RESULT = e + "+" + l; :} 
+	      ;
+
+ifCondition ::= IF LPAREN callCondition:c RPAREN callSide:b1 ELSE callSide:b2	{: RESULT = "(" + c + ")?" + b1 + ":" + b2; :}
+	      ;
+
+callCondition ::= callSide:e1 IN callSide:e2		   {: RESULT = "(" + e2 + ").contains(" + e1 + ")"; :}
+	        | callSide:e1 EQUALS callSide:e2	   {: RESULT = "(" + e1 + ").equals(" + e2 + ")"; :}
+		| ifCondition:b				   {: RESULT = b; :}
+		;
+
+callSide ::= IDENTIFIER:e callRest:r     {: RESULT = e + r; :}
+	   | STRING:e callRest:r	 {: RESULT = e + r; :}
+	   | functionCall:e callRest:r   {: RESULT = e + "" + r; :}
+	   | ifCondition:e		 {: RESULT = e; :}
+	   ;
+
+callRest ::= PLUS IDENTIFIER:e callRest:c    {: RESULT = "+" + e + c; :}
+	   | PLUS STRING:e callRest:c        {: RESULT = "+" + e + c; :}
+	   | PLUS functionCall:e callRest:c  {: RESULT = "+" + e + "" + c; :}
+	   | nothing	                     {: RESULT = ""; :}
+	   ;
+
+functionDeclaration ::= IDENTIFIER:name LPAREN argumentsList:list RPAREN LBRACKET block:b RBRACKET functionDeclaration:f
+				{: RESULT = "\tpublic static String " + name + "(" + list + ") {\n return " + b + ";\n\t}\n" + f; :}
+                      | noArgsFunction:name LBRACKET block:b RBRACKET functionDeclaration:f
+				{: RESULT = "\tpublic static String " + name + " {\n return " + b + ";\n\t}\n" + f; :}
+		      | functionCalls:e
+				{: RESULT = "\n\tpublic static void main(String[] args) {\n" + e + "\n\t}"; :}
+		      | nothing 
+				{: RESULT = "\n\tpublic static void main(String[] args) {\n System.out.println(\"You have no calls.\"); \n}"; :}
+		      ;
+
+argumentsList ::= argumentsList:e COMMA IDENTIFIER:e2		   {: RESULT = e + "," + " String " + e2; :}
+		| IDENTIFIER:e			                   {: RESULT = "String " + e; :}
+		;
+
+block ::= IF LPAREN condition:c RPAREN block:b ELSE block:b2   {: RESULT = "(" +  c + ") ? " + b + ":" + b2 + "\n"; :}
+	| side:e                                               {: RESULT = e; :}
+	| LPAREN block:b RPAREN block:b2		       {: RESULT = "(" + b + ")" + b2; :}
+	| PLUS block:b					       {: RESULT = "+" + b; :}
+	;
+
+condition ::= side:e1 IN side:e2                   {: RESULT = "(" + e2 + ").contains(" + e1 + ")"; :}
+	    | side:e1 EQUALS side:e2               {: RESULT = "(" + e1 + ").equals(" + e2 + ")"; :}
+	    | block:b				   {: RESULT = b; :}
+	    ;
+
+declCalls ::= IDENTIFIER:e LPAREN declCallsArgs:d RPAREN   {: RESULT = e + "(" + d + ")"; :}
+	    | noArgsFunction:e				   {: RESULT = e; :}
+	    ;
+
+declCallsArgs ::= declCallsArgs:d COMMA IDENTIFIER:e     {: RESULT = d + "," + e; :}
+	        | IDENTIFIER:e	                         {: RESULT = e; :}
+	        ;
+
+side ::= IDENTIFIER:e rest:e2                           {: RESULT = e + e2; :}
+       | STRING:e rest:e2                               {: RESULT = e + e2; :}
+       | declCalls:e rest:e2                            {: RESULT = e + "" + e2; :}
+       | nothing
+       ;
+
+rest ::= PLUS IDENTIFIER:e rest:e2		{: RESULT = "+" + e + e2; :}
+       | PLUS STRING:e rest:e2                  {: RESULT = "+" + e + e2; :}
+       | PLUS declCalls:e rest:e2		{: RESULT = "+" + e + e2; :}
+       | nothing                                {: RESULT = ""; :}
+       ;
+
+nothing ::= ;
